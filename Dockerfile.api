@@ -1,5 +1,5 @@
 # Multi-stage build for API service
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -8,13 +8,13 @@ WORKDIR /app
 
 # Copy go mod files
 COPY go.mod go.sum ./
-RUN go mod download
+RUN GOTOOLCHAIN=auto go mod download
 
 # Copy source code
 COPY . .
 
 # Build the API binary
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=linux GOTOOLCHAIN=auto go build \
     -ldflags="-w -s" \
     -o /app/bin/api \
     ./cmd/api
@@ -31,7 +31,7 @@ WORKDIR /app
 COPY --from=builder /app/bin/api /app/api
 
 # Copy configuration (optional, can be mounted)
-COPY --from=builder /app/config.yaml /app/config.yaml
+COPY --from=builder /app/internal/config/config.yaml /app/config.yaml
 
 # Create non-root user
 RUN addgroup -g 1000 appuser && \
