@@ -1,0 +1,198 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: stablerisk
+  labels:
+    app: postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
+  clusterIP: None
+  selector:
+    app: postgres
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: stablerisk
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DATABASE_DATABASE
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DATABASE_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stablerisk-secrets
+                  key: DATABASE_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - stablerisk
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - stablerisk
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgres-init-scripts
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: stablerisk
+data:
+  001_initial_schema.sql: |
+    -- Users table
+    CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('admin', 'analyst', 'viewer')),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        last_login TIMESTAMPTZ,
+        is_active BOOLEAN DEFAULT TRUE
+    );
+
+    -- Audit logs table (append-only for compliance)
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id UUID PRIMARY KEY,
+        timestamp TIMESTAMPTZ NOT NULL,
+        user_id TEXT,
+        action TEXT NOT NULL,
+        resource TEXT,
+        status TEXT,
+        ip_address INET,
+        details JSONB,
+        signature TEXT NOT NULL
+    );
+
+    CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
+    CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+
+    -- Outliers table
+    CREATE TABLE IF NOT EXISTS outliers (
+        id UUID PRIMARY KEY,
+        detected_at TIMESTAMPTZ NOT NULL,
+        type TEXT NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+        address TEXT NOT NULL,
+        transaction_hash TEXT,
+        amount NUMERIC(78, 6),
+        z_score DOUBLE PRECISION,
+        details JSONB NOT NULL,
+        acknowledged BOOLEAN DEFAULT FALSE,
+        acknowledged_by TEXT,
+        acknowledged_at TIMESTAMPTZ,
+        notes TEXT
+    );
+
+    CREATE INDEX idx_outliers_detected_at ON outliers(detected_at DESC);
+    CREATE INDEX idx_outliers_severity ON outliers(severity);
+    CREATE INDEX idx_outliers_type ON outliers(type);
+    CREATE INDEX idx_outliers_address ON outliers(address);
+    CREATE INDEX idx_outliers_acknowledged ON outliers(acknowledged);
+
+    -- Refresh tokens table
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id UUID PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        revoked BOOLEAN DEFAULT FALSE
+    );
+
+    CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+    CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
+
+    -- API keys table
+    CREATE TABLE IF NOT EXISTS api_keys (
+        id UUID PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        key_hash TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        expires_at TIMESTAMPTZ,
+        last_used_at TIMESTAMPTZ,
+        revoked BOOLEAN DEFAULT FALSE
+    );
+
+    CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+
+    -- Insert default users (bcrypt hash of 'changeme123')
+    INSERT INTO users (id, username, email, password_hash, role)
+    VALUES
+        ('00000000-0000-0000-0000-000000000001', 'admin', 'admin@stablerisk.local',
+         '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqYjLhi6yy', 'admin'),
+        ('00000000-0000-0000-0000-000000000002', 'analyst', 'analyst@stablerisk.local',
+         '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqYjLhi6yy', 'analyst'),
+        ('00000000-0000-0000-0000-000000000003', 'viewer', 'viewer@stablerisk.local',
+         '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqYjLhi6yy', 'viewer')
+    ON CONFLICT (username) DO NOTHING;

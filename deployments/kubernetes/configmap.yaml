@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stablerisk-config
+  namespace: stablerisk
+data:
+  # Server Configuration
+  SERVER_API_PORT: "8080"
+  MONITORING_METRICS_PORT: "9090"
+
+  # Database Configuration
+  DATABASE_HOST: "postgres-service"
+  DATABASE_PORT: "5432"
+  DATABASE_DATABASE: "stablerisk"
+  DATABASE_USER: "stablerisk"
+  DATABASE_SSL_MODE: "require"
+  DATABASE_MAX_OPEN_CONNS: "25"
+  DATABASE_MAX_IDLE_CONNS: "5"
+
+  # Raphtory Configuration
+  RAPHTORY_BASE_URL: "http://raphtory-service:8000"
+  RAPHTORY_TIMEOUT: "30s"
+
+  # Detection Configuration
+  DETECTION_INTERVAL: "60s"
+  DETECTION_ZSCORE_THRESHOLD: "3.0"
+  DETECTION_IQR_MULTIPLIER: "1.5"
+  DETECTION_WINDOW_DURATION: "24h"
+  DETECTION_MIN_DATA_POINTS: "30"
+  DETECTION_PATTERN_ENABLED: "true"
+
+  # Logging Configuration
+  LOGGING_LEVEL: "info"
+  LOGGING_FORMAT: "json"
+  LOGGING_OUTPUT_PATH: "stdout"
+  LOGGING_ERROR_PATH: "stderr"
+
+  # Monitoring Configuration
+  MONITORING_ENABLED: "true"
+
+  # TronGrid Configuration
+  TRONGRID_WEBSOCKET_URL: "wss://api.trongrid.io"
+  TRONGRID_USDT_CONTRACT: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+  TRONGRID_RECONNECT_DELAY: "1s"
+  TRONGRID_MAX_RECONNECTS: "10"
+  TRONGRID_PING_INTERVAL: "30s"

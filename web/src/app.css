@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+	--color-primary: #3b82f6;
+	--color-success: #10b981;
+	--color-warning: #f59e0b;
+	--color-error: #ef4444;
+	--color-info: #06b6d4;
+}
+
+body {
+	@apply bg-base-100 text-base-content;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	@apply bg-base-200;
+}
+
+::-webkit-scrollbar-thumb {
+	@apply bg-base-300 rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	@apply bg-base-content/30;
+}
+
+/* Severity badges */
+.severity-low {
+	@apply badge badge-info;
+}
+
+.severity-medium {
+	@apply badge badge-warning;
+}
+
+.severity-high {
+	@apply badge badge-error;
+}
+
+.severity-critical {
+	@apply badge badge-error badge-lg;
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Outlier type badges */
+.outlier-type {
+	@apply badge badge-outline;
+}
+
+/* Loading spinner */
+.loading-spinner {
+	@apply animate-spin rounded-full border-4 border-primary border-t-transparent;
+}
+
+/* Graph styles */
+.graph-node {
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.graph-node:hover {
+	stroke-width: 3;
+}
+
+.graph-link {
+	stroke: #999;
+	stroke-opacity: 0.6;
+	stroke-width: 1.5;
+}
+
+.graph-link-label {
+	font-size: 10px;
+	fill: #666;
+}

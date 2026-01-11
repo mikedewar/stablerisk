@@ -1,0 +1,142 @@
+version: '3.9'
+
+services:
+  # PostgreSQL database for audit logs, users, and API keys
+  postgres:
+    image: postgres:16-alpine
+    container_name: stablerisk-postgres
+    environment:
+      POSTGRES_DB: stablerisk
+      POSTGRES_USER: stablerisk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../migrations/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stablerisk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stablerisk-network
+
+  # Raphtory service for temporal graph analysis
+  raphtory:
+    build:
+      context: ../raphtory-service
+      dockerfile: Dockerfile
+    container_name: stablerisk-raphtory
+    ports:
+      - "8000:8000"
+    environment:
+      - LOG_LEVEL=info
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stablerisk-network
+    restart: unless-stopped
+
+  # Blockchain monitor service
+  monitor:
+    build:
+      context: ..
+      dockerfile: Dockerfile.monitor
+    container_name: stablerisk-monitor
+    environment:
+      - STABLERISK_TRONGRID_API_KEY=${TRONGRID_API_KEY}
+      - STABLERISK_RAPHTORY_BASE_URL=http://raphtory:8000
+      - STABLERISK_LOGGING_LEVEL=${LOG_LEVEL:-debug}
+      - STABLERISK_LOGGING_FORMAT=json
+    depends_on:
+      raphtory:
+        condition: service_healthy
+    networks:
+      - stablerisk-network
+    restart: unless-stopped
+
+  # API service
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    container_name: stablerisk-api
+    ports:
+      - "8080:8080"
+      - "9090:9090"  # Prometheus metrics
+    environment:
+      - STABLERISK_SERVER_API_PORT=8080
+      - STABLERISK_DATABASE_HOST=postgres
+      - STABLERISK_DATABASE_PORT=5432
+      - STABLERISK_DATABASE_USER=stablerisk
+      - STABLERISK_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-dev_password_change_me}
+      - STABLERISK_DATABASE_DATABASE=stablerisk
+      - STABLERISK_DATABASE_SSL_MODE=disable
+      - STABLERISK_RAPHTORY_BASE_URL=http://raphtory:8000
+      - STABLERISK_SECURITY_JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_me_32_chars}
+      - STABLERISK_SECURITY_ENCRYPTION_KEY=${ENCRYPTION_KEY:-dev_encryption_key_change_32b}
+      - STABLERISK_SECURITY_HMAC_KEY=${HMAC_KEY:-dev_hmac_key_change_me_32_chr}
+      - STABLERISK_LOGGING_LEVEL=${LOG_LEVEL:-debug}
+      - STABLERISK_LOGGING_FORMAT=json
+      - STABLERISK_MONITORING_ENABLED=true
+      - STABLERISK_MONITORING_METRICS_PORT=9090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      raphtory:
+        condition: service_healthy
+    networks:
+      - stablerisk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Web dashboard
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    container_name: stablerisk-web
+    ports:
+      - "3000:80"
+    environment:
+      - API_URL=http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - stablerisk-network
+    restart: unless-stopped
+
+  # Nginx reverse proxy with TLS termination
+  nginx:
+    image: nginx:alpine
+    container_name: stablerisk-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+      - web
+    networks:
+      - stablerisk-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  stablerisk-network:
+    driver: bridge

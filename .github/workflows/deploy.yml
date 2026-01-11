@@ -1,0 +1,164 @@
+name: Deploy to Kubernetes
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Image version/tag to deploy'
+        required: true
+        default: 'latest'
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          kubectl config use-context ${{ inputs.environment }}
+
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace stablerisk --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply ConfigMap
+        run: |
+          kubectl apply -f deployments/kubernetes/configmap.yaml
+
+      - name: Create/Update Secrets
+        run: |
+          # Check if secrets exist, create if they don't
+          if ! kubectl get secret stablerisk-secrets -n stablerisk &> /dev/null; then
+            echo "Creating secrets from GitHub secrets"
+            kubectl create secret generic stablerisk-secrets -n stablerisk \
+              --from-literal=DATABASE_PASSWORD="${{ secrets.DATABASE_PASSWORD }}" \
+              --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              --from-literal=ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
+              --from-literal=HMAC_KEY="${{ secrets.HMAC_KEY }}" \
+              --from-literal=TRONGRID_API_KEY="${{ secrets.TRONGRID_API_KEY }}"
+          else
+            echo "Secrets already exist, skipping creation"
+          fi
+
+      - name: Deploy PostgreSQL
+        run: |
+          kubectl apply -f deployments/kubernetes/postgres.yaml
+          kubectl wait --for=condition=ready pod -l app=postgres -n stablerisk --timeout=300s
+
+      - name: Deploy Raphtory
+        run: |
+          kubectl apply -f deployments/kubernetes/raphtory.yaml
+          kubectl wait --for=condition=ready pod -l app=raphtory -n stablerisk --timeout=300s
+
+      - name: Update image tags
+        run: |
+          # Update Monitor deployment
+          kubectl set image deployment/monitor -n stablerisk \
+            monitor=${{ env.REGISTRY }}/${{ github.repository }}/monitor:${{ inputs.version }}
+
+          # Update API deployment
+          kubectl set image deployment/api -n stablerisk \
+            api=${{ env.REGISTRY }}/${{ github.repository }}/api:${{ inputs.version }}
+
+          # Update Web deployment
+          kubectl set image deployment/web -n stablerisk \
+            web=${{ env.REGISTRY }}/${{ github.repository }}/web:${{ inputs.version }}
+
+      - name: Deploy Monitor
+        run: |
+          kubectl apply -f deployments/kubernetes/monitor.yaml
+          kubectl wait --for=condition=ready pod -l app=monitor -n stablerisk --timeout=300s
+
+      - name: Deploy API
+        run: |
+          kubectl apply -f deployments/kubernetes/api.yaml
+          kubectl wait --for=condition=ready pod -l app=api -n stablerisk --timeout=300s
+
+      - name: Deploy Web
+        run: |
+          kubectl apply -f deployments/kubernetes/web.yaml
+          kubectl wait --for=condition=ready pod -l app=web -n stablerisk --timeout=300s
+
+      - name: Apply Ingress
+        run: |
+          kubectl apply -f deployments/kubernetes/ingress.yaml
+
+      - name: Verify deployment
+        run: |
+          echo "=== Deployment Status ==="
+          kubectl get deployments -n stablerisk
+          echo ""
+          echo "=== Pod Status ==="
+          kubectl get pods -n stablerisk
+          echo ""
+          echo "=== Service Status ==="
+          kubectl get services -n stablerisk
+          echo ""
+          echo "=== Ingress Status ==="
+          kubectl get ingress -n stablerisk
+
+      - name: Run smoke tests
+        run: |
+          # Wait for ingress to be ready
+          sleep 30
+
+          # Get ingress URL
+          INGRESS_URL=$(kubectl get ingress stablerisk-ingress -n stablerisk -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+          if [ -z "$INGRESS_URL" ]; then
+            INGRESS_URL=$(kubectl get ingress stablerisk-ingress -n stablerisk -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          fi
+
+          echo "Testing ingress at: $INGRESS_URL"
+
+          # Test health endpoints
+          curl -f -k https://$INGRESS_URL/health || echo "Health check failed"
+          curl -f -k https://$INGRESS_URL/readiness || echo "Readiness check failed"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, initiating rollback"
+          kubectl rollout undo deployment/api -n stablerisk
+          kubectl rollout undo deployment/monitor -n stablerisk
+          kubectl rollout undo deployment/web -n stablerisk
+
+      - name: Send deployment notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Deployment to ${{ inputs.environment }}: ${{ job.status }}
+            Version: ${{ inputs.version }}
+            Commit: ${{ github.sha }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+env:
+  REGISTRY: ghcr.io

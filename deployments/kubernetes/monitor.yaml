@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor
+  namespace: stablerisk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitor
+  template:
+    metadata:
+      labels:
+        app: monitor
+    spec:
+      containers:
+        - name: monitor
+          image: stablerisk/monitor:latest
+          imagePullPolicy: Always
+          env:
+            # TronGrid Configuration
+            - name: STABLERISK_TRONGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stablerisk-secrets
+                  key: TRONGRID_API_KEY
+            - name: STABLERISK_TRONGRID_WEBSOCKET_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: TRONGRID_WEBSOCKET_URL
+            - name: STABLERISK_TRONGRID_USDT_CONTRACT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: TRONGRID_USDT_CONTRACT
+            - name: STABLERISK_TRONGRID_RECONNECT_DELAY
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: TRONGRID_RECONNECT_DELAY
+            - name: STABLERISK_TRONGRID_MAX_RECONNECTS
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: TRONGRID_MAX_RECONNECTS
+
+            # Raphtory Configuration
+            - name: STABLERISK_RAPHTORY_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: RAPHTORY_BASE_URL
+            - name: STABLERISK_RAPHTORY_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: RAPHTORY_TIMEOUT
+
+            # Logging Configuration
+            - name: STABLERISK_LOGGING_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: LOGGING_LEVEL
+            - name: STABLERISK_LOGGING_FORMAT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: LOGGING_FORMAT
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep -f monitor > /dev/null"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      restartPolicy: Always

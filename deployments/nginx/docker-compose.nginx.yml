@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: stablerisk-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Nginx configuration
+      - ./nginx-production.conf:/etc/nginx/nginx.conf:ro
+      - ./dhparam.pem:/etc/nginx/dhparam.pem:ro
+
+      # TLS certificates from certbot
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+
+      # Logs
+      - nginx-logs:/var/log/nginx
+    networks:
+      - stablerisk
+    depends_on:
+      - certbot
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.stablerisk.component=nginx"
+      - "com.stablerisk.environment=production"
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: stablerisk-certbot
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+    networks:
+      - stablerisk
+    labels:
+      - "com.stablerisk.component=certbot"
+      - "com.stablerisk.environment=production"
+
+volumes:
+  certbot-conf:
+    driver: local
+  certbot-www:
+    driver: local
+  nginx-logs:
+    driver: local
+
+networks:
+  stablerisk:
+    external: true

@@ -1,0 +1,66 @@
+# StableRisk Configuration
+# This file contains default configuration values
+# Override these values using environment variables with prefix STABLERISK_
+# Example: STABLERISK_SERVER_API_PORT=8080
+
+server:
+  api_port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  max_header_bytes: 1048576  # 1 MB
+
+database:
+  host: localhost
+  port: 5432
+  user: stablerisk
+  password: ""  # REQUIRED: Set via STABLERISK_DATABASE_PASSWORD
+  database: stablerisk
+  ssl_mode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+trongrid:
+  api_key: ""  # REQUIRED: Set via STABLERISK_TRONGRID_API_KEY
+  websocket_url: wss://api.trongrid.io
+  usdt_contract: TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
+  reconnect_delay: 1s
+  max_reconnects: 10
+  ping_interval: 30s
+
+raphtory:
+  base_url: http://localhost:8000
+  timeout: 30s
+  max_retries: 3
+  retry_delay: 1s
+
+security:
+  jwt_secret: ""  # REQUIRED: Set via STABLERISK_SECURITY_JWT_SECRET
+  jwt_expiry: 1h
+  refresh_token_expiry: 168h  # 7 days
+  encryption_key: ""  # REQUIRED: Set via STABLERISK_SECURITY_ENCRYPTION_KEY (32 bytes, base64)
+  hmac_key: ""  # REQUIRED: Set via STABLERISK_SECURITY_HMAC_KEY (32 bytes, base64)
+  tls_enabled: false
+  tls_cert_file: ""
+  tls_key_file: ""
+  password_min_length: 12
+  password_hash_cost: 12
+
+detection:
+  interval: 60s
+  zscore_threshold: 3.0
+  iqr_multiplier: 1.5
+  window_duration: 24h
+  min_data_points: 30
+  pattern_detection_enabled: true
+
+logging:
+  level: info  # debug, info, warn, error, fatal
+  format: json  # json or console
+  output_path: stdout
+  error_path: stderr
+
+monitoring:
+  enabled: true
+  metrics_port: 9090
+  health_check_url: /health

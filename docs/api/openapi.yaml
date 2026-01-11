@@ -1,0 +1,695 @@
+openapi: 3.0.3
+info:
+  title: StableRisk API
+  description: |
+    StableRisk USDT Transaction Monitoring and Anomaly Detection API
+
+    ## Overview
+    This API provides real-time monitoring of USDT (TRC20) transactions on the Tron blockchain,
+    with advanced anomaly detection capabilities using statistical methods and pattern recognition.
+
+    ## Authentication
+    All API endpoints (except `/health`, `/liveness`, `/readiness`) require JWT authentication.
+    Include the JWT token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+
+    ## Rate Limiting
+    - General API endpoints: 100 requests/second
+    - Login endpoint: 5 requests/minute
+
+    ## Compliance
+    This API is designed to meet ISO27001 and PCI-DSS compliance requirements.
+  version: 1.0.0
+  contact:
+    name: StableRisk Support
+    email: support@stablerisk.example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://stablerisk.yourdomain.com/api/v1
+    description: Production server
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+tags:
+  - name: Authentication
+    description: User authentication and token management
+  - name: Outliers
+    description: Anomaly detection and outlier management
+  - name: Statistics
+    description: Transaction statistics and metrics
+  - name: Detection
+    description: Anomaly detection operations
+  - name: Health
+    description: Service health and status checks
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user
+      description: Login with username and password to obtain JWT tokens
+      security: []  # No authentication required for login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  format: password
+                  example: password123
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: JWT access token (expires in 1 hour)
+                  refresh_token:
+                    type: string
+                    description: JWT refresh token (expires in 7 days)
+                  token_type:
+                    type: string
+                    example: Bearer
+                  expires_in:
+                    type: integer
+                    description: Access token expiry in seconds
+                    example: 3600
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many login attempts
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Obtain a new access token using a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+                  description: Valid refresh token
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: Bearer
+                  expires_in:
+                    type: integer
+                    example: 3600
+        '401':
+          description: Invalid or expired refresh token
+
+  /auth/profile:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user profile
+      description: Retrieve authenticated user's profile information
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /outliers:
+    get:
+      tags:
+        - Outliers
+      summary: List outliers
+      description: Retrieve paginated list of detected outliers with optional filters
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: type
+          in: query
+          description: Filter by outlier type
+          schema:
+            type: string
+            enum: [zscore, iqr, pattern_circulation, pattern_fanout, pattern_fanin, pattern_dormant, pattern_velocity]
+        - name: severity
+          in: query
+          description: Filter by severity level
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - name: status
+          in: query
+          description: Filter by acknowledgment status
+          schema:
+            type: string
+            enum: [acknowledged, unacknowledged]
+        - name: from
+          in: query
+          description: Start timestamp (RFC3339)
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End timestamp (RFC3339)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: List of outliers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  outliers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Outlier'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /outliers/{id}:
+    get:
+      tags:
+        - Outliers
+      summary: Get outlier details
+      description: Retrieve detailed information about a specific outlier
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Outlier details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Outlier'
+        '404':
+          description: Outlier not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /outliers/{id}/acknowledge:
+    post:
+      tags:
+        - Outliers
+      summary: Acknowledge outlier
+      description: Mark an outlier as acknowledged with notes (requires analyst role)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - notes
+              properties:
+                notes:
+                  type: string
+                  description: Acknowledgment notes
+                  example: "Investigated - legitimate large transaction"
+      responses:
+        '200':
+          description: Outlier acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Outlier acknowledged successfully
+        '404':
+          description: Outlier not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /statistics/transactions:
+    get:
+      tags:
+        - Statistics
+      summary: Get transaction statistics
+      description: Retrieve statistical summary of transactions over a time window
+      parameters:
+        - name: window
+          in: query
+          description: Time window duration
+          schema:
+            type: string
+            enum: [1h, 6h, 24h, 7d, 30d]
+            default: 24h
+        - name: from
+          in: query
+          description: Start timestamp (RFC3339)
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End timestamp (RFC3339)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Transaction statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionStatistics'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /statistics/outliers:
+    get:
+      tags:
+        - Statistics
+      summary: Get outlier statistics
+      description: Retrieve summary statistics of detected outliers
+      parameters:
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum: [1h, 6h, 24h, 7d, 30d]
+            default: 24h
+      responses:
+        '200':
+          description: Outlier statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_outliers:
+                    type: integer
+                    example: 142
+                  by_type:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                    example:
+                      zscore: 45
+                      iqr: 38
+                      pattern_circulation: 12
+                  by_severity:
+                    type: object
+                    properties:
+                      low:
+                        type: integer
+                      medium:
+                        type: integer
+                      high:
+                        type: integer
+                      critical:
+                        type: integer
+                  acknowledged_count:
+                    type: integer
+                  unacknowledged_count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /detection/trigger:
+    post:
+      tags:
+        - Detection
+      summary: Trigger anomaly detection
+      description: Manually trigger anomaly detection run (requires analyst role)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                window_hours:
+                  type: integer
+                  description: Look-back window in hours
+                  default: 24
+                  minimum: 1
+                  maximum: 168
+      responses:
+        '202':
+          description: Detection triggered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Anomaly detection triggered
+                  outliers_detected:
+                    type: integer
+                    example: 5
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /ws:
+    get:
+      tags:
+        - Outliers
+      summary: WebSocket connection for real-time outliers
+      description: |
+        Establish WebSocket connection to receive real-time outlier notifications.
+
+        **Authentication**: Pass JWT token as query parameter `?token=<jwt-token>`
+
+        **Message Format**:
+        ```json
+        {
+          "type": "outlier",
+          "data": { <Outlier object> }
+        }
+        ```
+
+        **Client -> Server Messages**:
+        ```json
+        {
+          "type": "subscribe",
+          "filters": {
+            "severities": ["high", "critical"],
+            "types": ["zscore", "iqr"]
+          }
+        }
+        ```
+      responses:
+        '101':
+          description: WebSocket connection established
+        '401':
+          description: Invalid or missing token
+        '426':
+          description: Upgrade required
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Basic health check endpoint
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /liveness:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Kubernetes liveness probe endpoint
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+
+  /readiness:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Kubernetes readiness probe endpoint (checks dependencies)
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: ok
+                      raphtory:
+                        type: string
+                        example: ok
+        '503':
+          description: Service not ready
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, analyst, viewer]
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Outlier:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tx_hash:
+          type: string
+          description: Transaction hash
+          example: "0x1234567890abcdef..."
+        block_number:
+          type: integer
+          format: int64
+          example: 12345678
+        timestamp:
+          type: string
+          format: date-time
+        from_address:
+          type: string
+          example: "TAbC123..."
+        to_address:
+          type: string
+          example: "TXyZ789..."
+        amount:
+          type: string
+          description: USDT amount (decimal string)
+          example: "1000000.000000"
+        type:
+          type: string
+          enum: [zscore, iqr, pattern_circulation, pattern_fanout, pattern_fanin, pattern_dormant, pattern_velocity]
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        score:
+          type: number
+          format: float
+          description: Detection score (e.g., z-score value)
+          example: 4.2
+        details:
+          type: object
+          description: Type-specific detection details
+          additionalProperties: true
+        acknowledged:
+          type: boolean
+        acknowledged_by:
+          type: string
+          format: uuid
+          nullable: true
+        acknowledged_at:
+          type: string
+          format: date-time
+          nullable: true
+        acknowledged_notes:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    TransactionStatistics:
+      type: object
+      properties:
+        total_transactions:
+          type: integer
+          format: int64
+          example: 145382
+        total_volume:
+          type: string
+          description: Total USDT volume
+          example: "52847392.450000"
+        unique_addresses:
+          type: integer
+          example: 8234
+        avg_transaction_size:
+          type: string
+          example: "362.87"
+        median_transaction_size:
+          type: string
+          example: "100.00"
+        max_transaction_size:
+          type: string
+          example: "5000000.00"
+        min_transaction_size:
+          type: string
+          example: "0.01"
+        time_window:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 50
+        total_pages:
+          type: integer
+          example: 10
+        total_items:
+          type: integer
+          example: 487
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Unauthorized"
+            code: "AUTH_REQUIRED"
+
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Forbidden"
+            code: "INSUFFICIENT_PERMISSIONS"

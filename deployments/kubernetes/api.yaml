@@ -1,0 +1,212 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: stablerisk
+  labels:
+    app: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    app: api
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: stablerisk
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api
+          image: stablerisk/api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: metrics
+          env:
+            # Server Configuration
+            - name: STABLERISK_SERVER_API_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: SERVER_API_PORT
+
+            # Database Configuration
+            - name: STABLERISK_DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DATABASE_HOST
+            - name: STABLERISK_DATABASE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DATABASE_PORT
+            - name: STABLERISK_DATABASE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DATABASE_USER
+            - name: STABLERISK_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stablerisk-secrets
+                  key: DATABASE_PASSWORD
+            - name: STABLERISK_DATABASE_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DATABASE_DATABASE
+            - name: STABLERISK_DATABASE_SSL_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DATABASE_SSL_MODE
+
+            # Raphtory Configuration
+            - name: STABLERISK_RAPHTORY_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: RAPHTORY_BASE_URL
+            - name: STABLERISK_RAPHTORY_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: RAPHTORY_TIMEOUT
+
+            # Security Configuration
+            - name: STABLERISK_SECURITY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: stablerisk-secrets
+                  key: JWT_SECRET
+            - name: STABLERISK_SECURITY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stablerisk-secrets
+                  key: ENCRYPTION_KEY
+            - name: STABLERISK_SECURITY_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stablerisk-secrets
+                  key: HMAC_KEY
+
+            # Detection Configuration
+            - name: STABLERISK_DETECTION_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DETECTION_INTERVAL
+            - name: STABLERISK_DETECTION_ZSCORE_THRESHOLD
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DETECTION_ZSCORE_THRESHOLD
+            - name: STABLERISK_DETECTION_IQR_MULTIPLIER
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: DETECTION_IQR_MULTIPLIER
+
+            # Logging Configuration
+            - name: STABLERISK_LOGGING_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: LOGGING_LEVEL
+            - name: STABLERISK_LOGGING_FORMAT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: LOGGING_FORMAT
+
+            # Monitoring Configuration
+            - name: STABLERISK_MONITORING_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: MONITORING_ENABLED
+            - name: STABLERISK_MONITORING_METRICS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: stablerisk-config
+                  key: MONITORING_METRICS_PORT
+
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-hpa
+  namespace: stablerisk
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
