@@ -33,7 +33,7 @@ Tron Blockchain → Monitor Service → Raphtory Graph → Detection Engine → 
 ## Prerequisites
 
 - Docker and Docker Compose
-- Go 1.22+ (for local development)
+- Go 1.23+ (for local development)
 - Python 3.11+ (for Raphtory service development)
 - Node.js 20+ (for web dashboard development)
 - TronGrid API Key (get from https://www.trongrid.io/)
