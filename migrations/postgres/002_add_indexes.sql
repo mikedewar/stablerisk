@@ -26,8 +26,8 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_cleanup ON refresh_tokens(expires_
 -- Active API keys only
 CREATE INDEX IF NOT EXISTS idx_api_keys_active_only ON api_keys(user_id, created_at DESC) WHERE is_active = true;
 
--- Non-expired refresh tokens
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_valid ON refresh_tokens(user_id, expires_at DESC) WHERE revoked = false AND expires_at > NOW();
+-- Non-revoked refresh tokens (application filters expired tokens in queries)
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_valid ON refresh_tokens(user_id, expires_at DESC) WHERE revoked = false;
 
 -- High severity outliers
 CREATE INDEX IF NOT EXISTS idx_outliers_high_severity ON outliers(detected_at DESC) WHERE severity IN ('high', 'critical');
