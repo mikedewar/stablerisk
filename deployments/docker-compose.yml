@@ -51,6 +51,10 @@ services:
     environment:
       - STABLERISK_TRONGRID_API_KEY=${TRONGRID_API_KEY}
       - STABLERISK_RAPHTORY_BASE_URL=http://raphtory:8000
+      - STABLERISK_SECURITY_JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_me_32_chars}
+      - STABLERISK_SECURITY_ENCRYPTION_KEY=${ENCRYPTION_KEY:-dev_encryption_key_change_32b}
+      - STABLERISK_SECURITY_HMAC_KEY=${HMAC_KEY:-dev_hmac_key_change_me_32_chr}
+      - STABLERISK_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-dev_password_change_me}
       - STABLERISK_LOGGING_LEVEL=${LOG_LEVEL:-debug}
       - STABLERISK_LOGGING_FORMAT=json
     depends_on:
@@ -77,6 +81,7 @@ services:
       - STABLERISK_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-dev_password_change_me}
       - STABLERISK_DATABASE_DATABASE=stablerisk
       - STABLERISK_DATABASE_SSL_MODE=disable
+      - STABLERISK_TRONGRID_API_KEY=${TRONGRID_API_KEY:-dummy_key_not_used_by_api}
       - STABLERISK_RAPHTORY_BASE_URL=http://raphtory:8000
       - STABLERISK_SECURITY_JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_me_32_chars}
       - STABLERISK_SECURITY_ENCRYPTION_KEY=${ENCRYPTION_KEY:-dev_encryption_key_change_32b}

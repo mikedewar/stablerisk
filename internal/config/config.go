@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -104,6 +105,11 @@ func Load(configPath string) (*Config, error) {
 	// Set default values
 	setDefaults(v)
 
+	// Configure environment variable handling BEFORE reading config file
+	v.AutomaticEnv()
+	v.SetEnvPrefix("STABLERISK")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
 	// Set config file path
 	if configPath != "" {
 		v.SetConfigFile(configPath)
@@ -121,10 +127,6 @@ func Load(configPath string) (*Config, error) {
 		}
 		// Config file not found; use defaults and env vars
 	}
-
-	// Override with environment variables
-	v.AutomaticEnv()
-	v.SetEnvPrefix("STABLERISK")
 
 	// Unmarshal config
 	var cfg Config
