@@ -25,12 +25,10 @@ COPY --from=builder /app/build ./build
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 
-# Create non-root user
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser && \
-    chown -R appuser:appuser /app
+# Use existing node user and set ownership
+RUN chown -R node:node /app
 
-USER appuser
+USER node
 
 # Expose port
 EXPOSE 3000
