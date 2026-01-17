@@ -100,7 +100,7 @@
 
 			// Update local state
 			outliers = outliers.map((o) =>
-				o.id === selectedOutlier!.id
+				o.id === selectedOutlier.id
 					? {
 							...o,
 							acknowledged: true,
@@ -345,7 +345,7 @@
 						<p class="font-mono text-sm flex-1">{selectedOutlier.address}</p>
 						<button
 							class="btn btn-xs btn-ghost"
-							on:click={() => copyToClipboard(selectedOutlier!.address)}
+							on:click={() => copyToClipboard(selectedOutlier.address)}
 						>
 							Copy
 						</button>
@@ -360,7 +360,7 @@
 							<p class="font-mono text-sm flex-1">{selectedOutlier.transaction_hash}</p>
 							<button
 								class="btn btn-xs btn-ghost"
-								on:click={() => copyToClipboard(selectedOutlier!.transaction_hash!)}
+								on:click={() => copyToClipboard(selectedOutlier.transaction_hash)}
 							>
 								Copy
 							</button>
@@ -412,7 +412,7 @@
 						</svg>
 						<div>
 							<p class="font-semibold">Acknowledged by {selectedOutlier.acknowledged_by}</p>
-							<p class="text-sm">{formatDate(selectedOutlier.acknowledged_at!)}</p>
+							<p class="text-sm">{formatDate(selectedOutlier.acknowledged_at)}</p>
 							{#if selectedOutlier.notes}
 								<p class="text-sm mt-2">{selectedOutlier.notes}</p>
 							{/if}
