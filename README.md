@@ -204,7 +204,12 @@ go test ./tests/contract/...
 
 # Specific package
 go test -v ./internal/detection/
+
+# Docker Compose integration test (verifies full stack)
+./tests/integration/docker-compose-test.sh
 ```
+
+**Docker Compose Integration Test**: This test verifies that all services build, start, and become healthy. It's recommended to run this test before deploying or after making changes to Docker configurations. See `tests/integration/README.md` for details.
 
 ## API Documentation
 
