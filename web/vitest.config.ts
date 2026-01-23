@@ -27,7 +27,10 @@ export default defineConfig({
 			$lib: path.resolve('./src/lib'),
 			$components: path.resolve('./src/lib/components'),
 			$stores: path.resolve('./src/lib/stores'),
-			$api: path.resolve('./src/lib/api')
+			$api: path.resolve('./src/lib/api'),
+			'$app/environment': path.resolve('./src/mocks/$app/environment.ts'),
+			'$app/navigation': path.resolve('./src/mocks/$app/navigation.ts'),
+			'$app/stores': path.resolve('./src/mocks/$app/stores.ts')
 		}
 	}
 });
