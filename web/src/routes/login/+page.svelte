@@ -97,6 +97,7 @@
 					</label>
 					<input
 						id="username"
+						name="username"
 						type="text"
 						placeholder="username"
 						class="input input-bordered"
@@ -113,6 +114,7 @@
 					</label>
 					<input
 						id="password"
+						name="password"
 						type="password"
 						placeholder="password"
 						class="input input-bordered"

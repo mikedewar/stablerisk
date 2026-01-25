@@ -142,27 +142,27 @@ INSERT INTO users (username, email, password_hash, role, is_active)
 VALUES (
     'admin',
     'admin@stablerisk.local',
-    '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYIjKYqKy4G',  -- admin123456
+    '$2a$12$RMdC9wRFYC/g80uji.byqOVVm.84z.c9GJzrfCf8ueaioU.poQqsu',  -- changeme123
     'admin',
     true
 ) ON CONFLICT (username) DO NOTHING;
 
--- Insert default analyst user (password: analyst123456 - CHANGE IN PRODUCTION)
+-- Insert default analyst user (password: changeme123 - CHANGE IN PRODUCTION)
 INSERT INTO users (username, email, password_hash, role, is_active)
 VALUES (
     'analyst',
     'analyst@stablerisk.local',
-    '$2a$12$8p2TQ0QmVc.WxKq0Y3YxfuGxqLc5VnE9qTqNv6fV8cVLzJvPxGsYe',  -- analyst123456
+    '$2a$12$Y7cib0Bq1/50ScBZuuxvSuwGjIVcNUFPfqMXJ/HcywdBpg5PcfWdS',  -- changeme123
     'analyst',
     true
 ) ON CONFLICT (username) DO NOTHING;
 
--- Insert default viewer user (password: viewer123456 - CHANGE IN PRODUCTION)
+-- Insert default viewer user (password: changeme123 - CHANGE IN PRODUCTION)
 INSERT INTO users (username, email, password_hash, role, is_active)
 VALUES (
     'viewer',
     'viewer@stablerisk.local',
-    '$2a$12$9q3UR1RnWd/YyLr1Z4ZygOHyrMd6WoF0FsUsRw7gW9dWmKwQyHtHu',  -- viewer123456
+    '$2a$12$XyzYd1kvzB0iaVmcF3fu9uaE.rD3MT2sNS9VpQf3RiE3U8Ca66goG',  -- changeme123
     'viewer',
     true
 ) ON CONFLICT (username) DO NOTHING;

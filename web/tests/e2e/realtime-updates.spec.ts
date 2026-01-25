@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { login } from './helpers';
 
 /**
  * E2E Test: Real-time Updates
@@ -13,10 +14,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Real-time Updates', () => {
 	test.beforeEach(async ({ page }) => {
 		// Login before each test
-		await page.goto('/login');
-		await page.fill('input[name="username"]', 'admin');
-		await page.fill('input[name="password"]', 'changeme123');
-		await page.click('button[type="submit"]');
+		await login(page);
 		await expect(page).toHaveURL('/');
 	});
 

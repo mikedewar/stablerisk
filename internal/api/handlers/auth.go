@@ -47,7 +47,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	err := h.db.QueryRow(`
 		SELECT id, username, email, password_hash, role, created_at, updated_at, last_login, is_active
 		FROM users
-		WHERE username = ? AND is_active = 1
+		WHERE username = $1 AND is_active = true
 	`, req.Username).Scan(
 		&user.ID,
 		&user.Username,
@@ -119,7 +119,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Update last login time
 	_, err = h.db.Exec(`
-		UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?
+		UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1
 	`, user.ID)
 	if err != nil {
 		h.logger.Error("Failed to update last login",
@@ -168,7 +168,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	err = h.db.QueryRow(`
 		SELECT id, username, email, role, created_at, updated_at, last_login, is_active
 		FROM users
-		WHERE id = ? AND is_active = 1
+		WHERE id = $1 AND is_active = true
 	`, claims.UserID).Scan(
 		&user.ID,
 		&user.Username,
@@ -238,7 +238,7 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	err := h.db.QueryRow(`
 		SELECT id, username, email, role, created_at, updated_at, last_login, is_active
 		FROM users
-		WHERE id = ?
+		WHERE id = $1
 	`, userID).Scan(
 		&user.ID,
 		&user.Username,

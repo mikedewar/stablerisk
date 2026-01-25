@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { login } from './helpers';
 
 /**
  * E2E Test: Complete User Journey
@@ -25,12 +26,8 @@ test.describe('Complete User Journey', () => {
 			// Should be redirected to login page if not authenticated
 			await expect(page).toHaveURL('/login');
 
-			// Fill in login form
-			await page.fill('input[name="username"]', 'admin');
-			await page.fill('input[name="password"]', 'changeme123');
-
-			// Submit form
-			await page.click('button[type="submit"]');
+			// Use helper to login
+			await login(page);
 
 			// Should redirect to dashboard after successful login
 			await expect(page).toHaveURL('/');
@@ -115,12 +112,8 @@ test.describe('Complete User Journey', () => {
 		await test.step('Attempt login with invalid credentials', async () => {
 			await expect(page).toHaveURL('/login');
 
-			// Fill in wrong credentials
-			await page.fill('input[name="username"]', 'wronguser');
-			await page.fill('input[name="password"]', 'wrongpass');
-
-			// Submit form
-			await page.click('button[type="submit"]');
+			// Use helper with wrong credentials
+			await login(page, 'wronguser', 'wrongpass');
 
 			// Should stay on login page
 			await expect(page).toHaveURL('/login');
@@ -143,9 +136,7 @@ test.describe('Complete User Journey', () => {
 	test('should persist session after page reload', async ({ page }) => {
 		await test.step('Login and reload page', async () => {
 			// Login first
-			await page.fill('input[name="username"]', 'admin');
-			await page.fill('input[name="password"]', 'changeme123');
-			await page.click('button[type="submit"]');
+			await login(page);
 
 			// Wait for dashboard
 			await expect(page).toHaveURL('/');
@@ -163,9 +154,7 @@ test.describe('Complete User Journey', () => {
 	test('should navigate between all pages', async ({ page }) => {
 		await test.step('Login and navigate through all pages', async () => {
 			// Login
-			await page.fill('input[name="username"]', 'admin');
-			await page.fill('input[name="password"]', 'changeme123');
-			await page.click('button[type="submit"]');
+			await login(page);
 			await expect(page).toHaveURL('/');
 
 			// Navigate to Outliers

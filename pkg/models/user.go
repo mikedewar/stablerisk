@@ -4,15 +4,15 @@ import "time"
 
 // User represents a system user
 type User struct {
-	ID           string    `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email,omitempty"`
-	PasswordHash string    `json:"-"` // Never expose in JSON
-	Role         Role      `json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	LastLogin    time.Time `json:"last_login,omitempty"`
-	IsActive     bool      `json:"is_active"`
+	ID           string     `json:"id"`
+	Username     string     `json:"username"`
+	Email        string     `json:"email,omitempty"`
+	PasswordHash string     `json:"-"` // Never expose in JSON
+	Role         Role       `json:"role"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	LastLogin    *time.Time `json:"last_login,omitempty"`
+	IsActive     bool       `json:"is_active"`
 }
 
 // Role represents user roles

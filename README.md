@@ -95,9 +95,9 @@ For development purposes, default users are created:
 
 | Username | Password | Role |
 |----------|----------|------|
-| admin | admin123456 | admin |
-| analyst | analyst123456 | analyst |
-| viewer | viewer123456 | viewer |
+| admin | changeme123 | admin |
+| analyst | changeme123 | analyst |
+| viewer | changeme123 | viewer |
 
 **IMPORTANT**: Change these passwords in production!
 
