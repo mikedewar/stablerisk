@@ -18,17 +18,18 @@ type Transaction struct {
 	Confirmed   bool            `json:"confirmed"`
 }
 
-// TronEvent represents a raw event from TronGrid WebSocket
+// TronEvent represents a raw event from TronGrid REST API
 type TronEvent struct {
-	TransactionID string                 `json:"transaction_id"`
-	ContractAddress string               `json:"contract_address"`
-	CallerAddress string                 `json:"caller_address"`
-	OriginAddress string                 `json:"origin_address"`
-	EventName     string                 `json:"event_name"`
-	EventData     map[string]interface{} `json:"event"`
-	BlockNumber   uint64                 `json:"block_number"`
-	BlockTimestamp int64                 `json:"block_timestamp"`
-	Removed       bool                   `json:"removed"`
+	TransactionID   string                 `json:"transaction_id"`
+	ContractAddress string                 `json:"contract_address"`
+	CallerAddress   string                 `json:"caller_contract_address"`
+	EventName       string                 `json:"event_name"`
+	Event           string                 `json:"event"`           // Event signature string
+	Result          map[string]interface{} `json:"result"`          // Actual event data
+	ResultType      map[string]string      `json:"result_type"`     // Type information
+	EventIndex      int                    `json:"event_index"`
+	BlockNumber     uint64                 `json:"block_number"`
+	BlockTimestamp  int64                  `json:"block_timestamp"`
 }
 
 // TransferEvent represents a decoded Transfer event

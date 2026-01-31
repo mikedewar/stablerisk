@@ -49,13 +49,8 @@ func (p *TransactionParser) ParseEvent(event *models.TronEvent) (*models.Transac
 		return nil, fmt.Errorf("not a USDT contract event: %s", event.ContractAddress)
 	}
 
-	// Skip removed events (chain reorganization)
-	if event.Removed {
-		return nil, fmt.Errorf("event was removed (reorg)")
-	}
-
-	// Parse transfer event data
-	transfer, err := p.parseTransferEvent(event.EventData)
+	// Parse transfer event data from Result field
+	transfer, err := p.parseTransferEvent(event.Result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse transfer event: %w", err)
 	}
