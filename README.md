@@ -4,7 +4,7 @@ A production-ready Go-based service for monitoring USDT (TRC20) stablecoin trans
 
 ## Features
 
-- Real-time USDT transaction monitoring on Tron blockchain via TronGrid WebSocket
+- Real-time USDT transaction monitoring on Tron blockchain via TronGrid REST API polling
 - Temporal graph analysis using Raphtory for pattern detection
 - Statistical anomaly detection (Z-score and IQR methods)
 - Graph-based pattern detection (circulation, fan-out, fan-in, dormant awakening, velocity)
@@ -23,7 +23,7 @@ Tron Blockchain → Monitor Service → Raphtory Graph → Detection Engine → 
 
 ### Components
 
-- **Monitor Service** (Go): Connects to TronGrid WebSocket, parses USDT transactions, sends to Raphtory
+- **Monitor Service** (Go): Polls TronGrid REST API for USDT transactions, parses events, sends to Raphtory
 - **Raphtory Service** (Python): Temporal graph database with REST API
 - **API Service** (Go): Anomaly detection, REST API, WebSocket hub, authentication
 - **Web Dashboard** (Svelte): Real-time visualization and monitoring interface
@@ -51,12 +51,17 @@ cd stablerisk
 cp .env.example .env
 
 # Edit .env and set required secrets:
-# - TRONGRID_API_KEY
+# - TRONGRID_API_KEY (get from https://www.trongrid.io/)
 # - POSTGRES_PASSWORD
 # - JWT_SECRET
 # - ENCRYPTION_KEY
 # - HMAC_KEY
 nano .env
+
+# IMPORTANT: TronGrid API Key is required for the monitor service to access
+# Tron blockchain data. The monitor polls the TronGrid REST API every 10-30
+# seconds to fetch USDT transaction events. Without a valid API key, the
+# monitor service will fail to start.
 ```
 
 ### 2. Generate Secrets
@@ -420,13 +425,33 @@ kubectl logs -f deployment/stablerisk-api -n stablerisk
 
 ### Monitor Service Not Connecting
 
+The monitor service polls TronGrid's REST API for USDT transaction events. Common issues:
+
 ```bash
-# Check TronGrid API key
+# Check TronGrid API key and connection status
 docker-compose logs monitor | grep "TronGrid"
 
-# Verify WebSocket connection
-docker-compose exec monitor curl -v wss://api.trongrid.io
+# Verify API key is set
+docker-compose exec monitor printenv | grep TRONGRID_API_KEY
+
+# Test TronGrid REST API connectivity
+curl -H "TRON-PRO-API-KEY: your-api-key-here" \
+  "https://api.trongrid.io/v1/contracts/TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t/events?limit=1"
+
+# Expected response: {"success":true,"data":[...],"meta":...}
 ```
+
+**Common Errors:**
+- `401 Unauthorized`: Invalid or missing TRONGRID_API_KEY
+- `429 Too Many Requests`: API rate limit exceeded (upgrade your TronGrid plan)
+- `Connection timeout`: Network issues or TronGrid service down
+
+**Monitor Service Configuration:**
+- Polling interval: 10-30 seconds (configurable via `STABLERISK_TRONGRID_PING_INTERVAL`)
+- Endpoint: `https://api.trongrid.io/v1/contracts/{address}/events`
+- Auth header: `TRON-PRO-API-KEY: {your-api-key}`
+- Fetches up to 200 events per poll
+- Tracks timestamps to prevent duplicate processing
 
 ### Database Connection Issues
 
