@@ -29,10 +29,12 @@ services:
       dockerfile: Dockerfile
     container_name: stablerisk-raphtory
     ports:
-      - "8000:8000"
+      - "8000:8000"   # FastAPI REST API
+      - "1736:1736"   # GraphQL server with UI
     environment:
       - LOG_LEVEL=info
       - PYTHONUNBUFFERED=1
+      - GRAPHQL_PORT=1736
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

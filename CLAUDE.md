@@ -38,6 +38,7 @@ If the task is a fix, do this in addition to the above:
 ### sub agents
 - whenever you interact with github, please use your github-manager subagent.
 - whenever you execute front end tests, please use the frontend-test-executor subagent.
+- whenever you are using git, please use the git-manager subagent.
 
 
 ### postscript
