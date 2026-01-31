@@ -65,6 +65,13 @@ async def shutdown_event():
     logger.info("Raphtory service shutting down")
 
 
+@app.get("/")
+async def root():
+    """Redirect to API documentation"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/docs")
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
