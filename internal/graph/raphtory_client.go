@@ -180,6 +180,42 @@ func (c *RaphtoryClient) GetTransactionsInWindow(ctx context.Context, startTime,
 	return transactions, nil
 }
 
+// GraphStatistics represents graph statistics from Raphtory
+type GraphStatistics struct {
+	NodeCount        int   `json:"node_count"`
+	EdgeCount        int   `json:"edge_count"`
+	TransactionCount int64 `json:"transaction_count"`
+	EarliestTime     int64 `json:"earliest_time"`
+	LatestTime       int64 `json:"latest_time"`
+	Persistent       bool  `json:"persistent"`
+}
+
+// GetStatistics retrieves graph statistics from Raphtory
+func (c *RaphtoryClient) GetStatistics(ctx context.Context) (*GraphStatistics, error) {
+	url := fmt.Sprintf("%s/graph/statistics", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("raphtory returned status %d", resp.StatusCode)
+	}
+
+	var stats GraphStatistics
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &stats, nil
+}
+
 // Health checks if Raphtory service is healthy
 func (c *RaphtoryClient) Health(ctx context.Context) error {
 	url := fmt.Sprintf("%s/health", c.baseURL)

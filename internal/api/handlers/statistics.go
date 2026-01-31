@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -8,25 +9,28 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mikedewar/stablerisk/internal/api"
+	"github.com/mikedewar/stablerisk/internal/graph"
 	"github.com/mikedewar/stablerisk/pkg/models"
 	"go.uber.org/zap"
 )
 
 // StatisticsHandler handles statistics requests
 type StatisticsHandler struct {
-	db     *sql.DB
-	logger *zap.Logger
+	db             *sql.DB
+	raphtoryClient *graph.RaphtoryClient
+	logger         *zap.Logger
 }
 
 // NewStatisticsHandler creates a new statistics handler
-func NewStatisticsHandler(db *sql.DB, logger *zap.Logger) *StatisticsHandler {
+func NewStatisticsHandler(db *sql.DB, raphtoryClient *graph.RaphtoryClient, logger *zap.Logger) *StatisticsHandler {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
 	return &StatisticsHandler{
-		db:     db,
-		logger: logger,
+		db:             db,
+		raphtoryClient: raphtoryClient,
+		logger:         logger,
 	}
 }
 
@@ -98,8 +102,18 @@ func (h *StatisticsHandler) GetStatistics(c *gin.Context) {
 	// This would typically come from a monitoring system
 	stats.DetectionRunning = true
 
-	// Total transactions (placeholder - would come from transactions table)
-	stats.TotalTransactions = 0
+	// Get total transactions from Raphtory
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	graphStats, err := h.raphtoryClient.GetStatistics(ctx)
+	if err != nil {
+		h.logger.Warn("Failed to get Raphtory statistics, returning 0 transactions",
+			zap.Error(err))
+		stats.TotalTransactions = 0
+	} else {
+		stats.TotalTransactions = graphStats.TransactionCount
+	}
 
 	c.JSON(http.StatusOK, stats)
 }
