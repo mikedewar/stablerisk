@@ -18,6 +18,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// Check if this is an API request
 	if (url.pathname.startsWith('/api/')) {
+		// Check if this is a WebSocket upgrade request
+		const upgradeHeader = request.headers.get('upgrade');
+		const isWebSocketUpgrade = upgradeHeader?.toLowerCase() === 'websocket';
+
+		// Skip proxying for WebSocket upgrade requests
+		// WebSocket connections need to be handled directly without HTTP proxying
+		if (isWebSocketUpgrade) {
+			// Let the request pass through to SvelteKit's normal handling
+			// This allows WebSocket connections to connect directly to the backend
+			return resolve(event);
+		}
+
 		// Get API base URL from environment
 		// In Docker: API_URL=http://api:8080
 		// In dev: defaults to http://localhost:8080
