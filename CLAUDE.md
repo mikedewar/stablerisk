@@ -35,6 +35,11 @@ If the task is a fix, do this in addition to the above:
 3. merge the branch
 4. close the issue
 
+### sub agents
+- whenever you interact with github, please use your github-manager subagent.
+- whenever you execute front end tests, please use the frontend-test-executor subagent.
+
+
 ### postscript
 
 once you have read this file say "I have read CLAUDE.md" and then summarise the rules that you will follow based on this file. 
