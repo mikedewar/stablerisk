@@ -44,11 +44,11 @@ type DatabaseConfig struct {
 // TronGridConfig holds TronGrid API configuration
 type TronGridConfig struct {
 	APIKey          string        `mapstructure:"api_key"`
-	WebSocketURL    string        `mapstructure:"websocket_url"`
+	WebSocketURL    string        `mapstructure:"websocket_url"` // Actually REST API URL (https://), kept for backwards compat
 	USDTContract    string        `mapstructure:"usdt_contract"`
 	ReconnectDelay  time.Duration `mapstructure:"reconnect_delay"`
 	MaxReconnects   int           `mapstructure:"max_reconnects"`
-	PingInterval    time.Duration `mapstructure:"ping_interval"`
+	PingInterval    time.Duration `mapstructure:"ping_interval"` // Used as polling interval for REST API
 }
 
 // RaphtoryConfig holds Raphtory service configuration
@@ -161,11 +161,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.conn_max_lifetime", 5*time.Minute)
 
 	// TronGrid defaults
-	v.SetDefault("trongrid.websocket_url", "wss://api.trongrid.io")
+	// Note: websocket_url is now used for REST API (https://), not WebSocket (wss://)
+	v.SetDefault("trongrid.websocket_url", "https://api.trongrid.io")
 	v.SetDefault("trongrid.usdt_contract", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
 	v.SetDefault("trongrid.reconnect_delay", 1*time.Second)
 	v.SetDefault("trongrid.max_reconnects", 10)
-	v.SetDefault("trongrid.ping_interval", 30*time.Second)
+	v.SetDefault("trongrid.ping_interval", 10*time.Second) // Used as polling interval
 
 	// Raphtory defaults
 	v.SetDefault("raphtory.base_url", "http://localhost:8000")

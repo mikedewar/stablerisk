@@ -4,21 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/mikedewar/stablerisk/pkg/models"
 	"go.uber.org/zap"
 )
 
-// TronClient manages WebSocket connection to TronGrid
+// TronClient manages REST API polling to TronGrid
 type TronClient struct {
 	apiKey       string
-	wsURL        string
+	apiURL       string
 	usdtContract string
-	conn         *websocket.Conn
+	httpClient   *http.Client
 	parser       *TransactionParser
 	retryHandler *RetryHandler
 	logger       *zap.Logger
@@ -36,21 +36,21 @@ type TronClient struct {
 	cancel     context.CancelFunc
 
 	// Configuration
-	pingInterval time.Duration
-	pongWait     time.Duration
-	writeWait    time.Duration
+	pollingInterval time.Duration
+	lastTimestamp   int64 // Track last processed event timestamp to avoid duplicates
+	timestampLock   sync.RWMutex
 }
 
 // TronClientConfig holds TronGrid client configuration
 type TronClientConfig struct {
-	APIKey       string
-	WebSocketURL string
-	USDTContract string
-	PingInterval time.Duration
-	RetryConfig  RetryConfig
+	APIKey          string
+	WebSocketURL    string        // Kept for backwards compatibility, but will use as API URL
+	USDTContract    string
+	PingInterval    time.Duration // Used as polling interval
+	RetryConfig     RetryConfig
 }
 
-// NewTronClient creates a new TronGrid WebSocket client
+// NewTronClient creates a new TronGrid REST API client
 func NewTronClient(config TronClientConfig, logger *zap.Logger) *TronClient {
 	if logger == nil {
 		logger = zap.NewNop()
@@ -58,116 +58,202 @@ func NewTronClient(config TronClientConfig, logger *zap.Logger) *TronClient {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Convert WebSocket URL to REST API URL
+	apiURL := config.WebSocketURL
+	if apiURL == "wss://api.trongrid.io" || apiURL == "ws://api.trongrid.io" {
+		apiURL = "https://api.trongrid.io"
+	}
+
+	// Use PingInterval as polling interval (default to 10 seconds if not set)
+	pollingInterval := config.PingInterval
+	if pollingInterval == 0 {
+		pollingInterval = 10 * time.Second
+	}
+
 	client := &TronClient{
 		apiKey:       config.APIKey,
-		wsURL:        config.WebSocketURL,
+		apiURL:       apiURL,
 		usdtContract: config.USDTContract,
-		parser:       NewTransactionParser(config.USDTContract),
-		retryHandler: NewRetryHandler(config.RetryConfig, logger),
-		logger:       logger,
-		txChannel:    make(chan *models.Transaction, 100),
-		errChannel:   make(chan error, 10),
-		closeSignal:  make(chan struct{}),
-		status:       models.StatusDisconnected,
-		connected:    false,
-		ctx:          ctx,
-		cancel:       cancel,
-		pingInterval: config.PingInterval,
-		pongWait:     60 * time.Second,
-		writeWait:    10 * time.Second,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		parser:          NewTransactionParser(config.USDTContract),
+		retryHandler:    NewRetryHandler(config.RetryConfig, logger),
+		logger:          logger,
+		txChannel:       make(chan *models.Transaction, 100),
+		errChannel:      make(chan error, 10),
+		closeSignal:     make(chan struct{}),
+		status:          models.StatusDisconnected,
+		connected:       false,
+		ctx:             ctx,
+		cancel:          cancel,
+		pollingInterval: pollingInterval,
+		lastTimestamp:   0,
 	}
 
 	return client
 }
 
-// Connect establishes WebSocket connection to TronGrid
+// TronEventResponse represents the TronGrid API response
+type TronEventResponse struct {
+	Success bool              `json:"success"`
+	Data    []models.TronEvent `json:"data"`
+	Meta    struct {
+		At          int64  `json:"at"`
+		Fingerprint string `json:"fingerprint"`
+	} `json:"meta"`
+}
+
+// Connect verifies connection to TronGrid API
 func (c *TronClient) Connect() error {
 	c.setStatus(models.StatusConnecting)
-	c.logger.Info("Connecting to TronGrid WebSocket",
-		zap.String("url", c.wsURL),
+	c.logger.Info("Connecting to TronGrid REST API",
+		zap.String("url", c.apiURL),
 		zap.String("contract", c.usdtContract))
 
-	// Build WebSocket URL with contract subscription
-	wsURL := fmt.Sprintf("%s/event/contract/%s", c.wsURL, c.usdtContract)
+	// Test API connectivity with a simple request
+	endpoint := fmt.Sprintf("%s/v1/contracts/%s/events", c.apiURL, c.usdtContract)
 
-	// Create HTTP headers with API key
-	headers := http.Header{}
-	headers.Set("TRON-PRO-API-KEY", c.apiKey)
-
-	// Dial WebSocket
-	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	req, err := http.NewRequestWithContext(c.ctx, "GET", endpoint, nil)
 	if err != nil {
 		c.setStatus(models.StatusError)
-		if resp != nil {
-			return fmt.Errorf("failed to connect to TronGrid (status %d): %w", resp.StatusCode, err)
-		}
-		return fmt.Errorf("failed to connect to TronGrid: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	c.conn = conn
+	// Add API key header
+	req.Header.Set("TRON-PRO-API-KEY", c.apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	// Add query parameters for initial test
+	q := req.URL.Query()
+	q.Add("limit", "1")
+	q.Add("only_confirmed", "true")
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.setStatus(models.StatusError)
+		return fmt.Errorf("failed to connect to TronGrid API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		c.setStatus(models.StatusError)
+		return fmt.Errorf("TronGrid API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
 	c.connected = true
 	c.setStatus(models.StatusConnected)
 	c.retryHandler.Reset()
 
-	c.logger.Info("Successfully connected to TronGrid WebSocket")
-
-	// Start message handlers
-	go c.readMessages()
-	go c.pingLoop()
+	c.logger.Info("Successfully connected to TronGrid REST API")
 
 	return nil
 }
 
-// readMessages reads messages from WebSocket
-func (c *TronClient) readMessages() {
-	defer func() {
-		c.connected = false
-		c.setStatus(models.StatusDisconnected)
-	}()
+// pollEvents polls for new events from TronGrid
+func (c *TronClient) pollEvents() {
+	ticker := time.NewTicker(c.pollingInterval)
+	defer ticker.Stop()
 
-	// Set pong handler
-	c.conn.SetReadDeadline(time.Now().Add(c.pongWait))
-	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(c.pongWait))
-		return nil
-	})
+	c.logger.Info("Starting TronGrid event polling",
+		zap.Duration("interval", c.pollingInterval))
 
 	for {
 		select {
 		case <-c.ctx.Done():
+			c.logger.Info("Event polling stopped")
 			return
-		default:
-		}
-
-		// Read message
-		_, message, err := c.conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				c.logger.Error("WebSocket read error", zap.Error(err))
+		case <-ticker.C:
+			if err := c.fetchEvents(); err != nil {
+				c.logger.Error("Failed to fetch events", zap.Error(err))
+				c.errChannel <- err
 			}
-			c.errChannel <- err
-			return
-		}
-
-		// Parse and process message
-		if err := c.processMessage(message); err != nil {
-			c.logger.Warn("Failed to process message",
-				zap.Error(err),
-				zap.String("message", string(message)))
 		}
 	}
 }
 
-// processMessage parses and processes a WebSocket message
-func (c *TronClient) processMessage(message []byte) error {
-	// Parse as TronEvent
-	var event models.TronEvent
-	if err := json.Unmarshal(message, &event); err != nil {
-		return fmt.Errorf("failed to unmarshal event: %w", err)
+// fetchEvents retrieves events from TronGrid API
+func (c *TronClient) fetchEvents() error {
+	endpoint := fmt.Sprintf("%s/v1/contracts/%s/events", c.apiURL, c.usdtContract)
+
+	req, err := http.NewRequestWithContext(c.ctx, "GET", endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
+	// Add API key header
+	req.Header.Set("TRON-PRO-API-KEY", c.apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	// Add query parameters
+	q := req.URL.Query()
+	q.Add("limit", "200") // Fetch up to 200 events per poll
+	q.Add("only_confirmed", "true") // Only get confirmed transactions
+	q.Add("order_by", "block_timestamp,asc") // Oldest first
+
+	// Add min timestamp to avoid fetching old events
+	c.timestampLock.RLock()
+	lastTimestamp := c.lastTimestamp
+	c.timestampLock.RUnlock()
+
+	if lastTimestamp > 0 {
+		// Add 1ms to avoid getting the same event again
+		q.Add("min_block_timestamp", fmt.Sprintf("%d", lastTimestamp+1))
+	}
+
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch events: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("TronGrid API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response
+	var eventResp TronEventResponse
+	if err := json.NewDecoder(resp.Body).Decode(&eventResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if !eventResp.Success {
+		return fmt.Errorf("TronGrid API returned success=false")
+	}
+
+	// Process events
+	c.logger.Debug("Fetched events from TronGrid",
+		zap.Int("count", len(eventResp.Data)))
+
+	for _, event := range eventResp.Data {
+		if err := c.processEvent(&event); err != nil {
+			c.logger.Warn("Failed to process event",
+				zap.Error(err),
+				zap.String("tx_hash", event.TransactionID))
+		}
+
+		// Update last timestamp
+		if event.BlockTimestamp > 0 {
+			c.timestampLock.Lock()
+			if event.BlockTimestamp > c.lastTimestamp {
+				c.lastTimestamp = event.BlockTimestamp
+			}
+			c.timestampLock.Unlock()
+		}
+	}
+
+	return nil
+}
+
+// processEvent parses and processes a TronGrid event
+func (c *TronClient) processEvent(event *models.TronEvent) error {
 	// Parse into transaction
-	tx, err := c.parser.ParseEvent(&event)
+	tx, err := c.parser.ParseEvent(event)
 	if err != nil {
 		// Not all events are valid transactions (e.g., wrong contract, non-Transfer events)
 		return err
@@ -181,7 +267,7 @@ func (c *TronClient) processMessage(message []byte) error {
 	// Send to transaction channel
 	select {
 	case c.txChannel <- tx:
-		c.logger.Debug("Transaction received",
+		c.logger.Debug("Transaction processed",
 			zap.String("tx_hash", tx.TxHash),
 			zap.String("from", tx.From),
 			zap.String("to", tx.To),
@@ -196,47 +282,25 @@ func (c *TronClient) processMessage(message []byte) error {
 	return nil
 }
 
-// pingLoop sends periodic ping messages to keep connection alive
-func (c *TronClient) pingLoop() {
-	ticker := time.NewTicker(c.pingInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := c.sendPing(); err != nil {
-				c.logger.Error("Failed to send ping", zap.Error(err))
-				c.errChannel <- err
-				return
-			}
-		case <-c.ctx.Done():
-			return
-		}
-	}
-}
-
-// sendPing sends a ping message
-func (c *TronClient) sendPing() error {
-	c.conn.SetWriteDeadline(time.Now().Add(c.writeWait))
-	return c.conn.WriteMessage(websocket.PingMessage, nil)
-}
-
 // Start starts the client with automatic reconnection
 func (c *TronClient) Start() error {
 	c.logger.Info("Starting TronGrid client")
 
-	// Initial connection
+	// Initial connection test
 	if err := c.Connect(); err != nil {
 		return fmt.Errorf("initial connection failed: %w", err)
 	}
 
-	// Start reconnection loop
+	// Start polling loop
+	go c.pollEvents()
+
+	// Start reconnection handler
 	go c.reconnectionLoop()
 
 	return nil
 }
 
-// reconnectionLoop handles automatic reconnection on disconnect
+// reconnectionLoop handles automatic reconnection on errors
 func (c *TronClient) reconnectionLoop() {
 	for {
 		select {
@@ -247,10 +311,6 @@ func (c *TronClient) reconnectionLoop() {
 			c.logger.Error("Connection error, attempting to reconnect",
 				zap.Error(err))
 
-			// Close existing connection
-			if c.conn != nil {
-				c.conn.Close()
-			}
 			c.connected = false
 			c.setStatus(models.StatusReconnecting)
 
@@ -320,29 +380,12 @@ func (c *TronClient) IsConnected() bool {
 	return c.connected && c.Status() == models.StatusConnected
 }
 
-// Close closes the WebSocket connection and stops the client
+// Close closes the client and stops polling
 func (c *TronClient) Close() error {
 	c.logger.Info("Closing TronGrid client")
 
 	// Cancel context to stop all goroutines
 	c.cancel()
-
-	// Close WebSocket connection
-	if c.conn != nil {
-		// Send close message
-		err := c.conn.WriteMessage(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-		)
-		if err != nil {
-			c.logger.Warn("Failed to send close message", zap.Error(err))
-		}
-
-		// Close connection
-		if err := c.conn.Close(); err != nil {
-			return fmt.Errorf("failed to close connection: %w", err)
-		}
-	}
 
 	c.connected = false
 	c.setStatus(models.StatusDisconnected)
