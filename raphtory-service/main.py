@@ -9,6 +9,7 @@ import sys
 import structlog
 import uvicorn
 import threading
+import time
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -59,21 +60,73 @@ def run_fastapi_server():
 
 def run_graphql_server():
     """Run the GraphQL server with UI"""
-    # Import here to avoid circular dependencies
-    from api.server import graph_manager
-    from graphql_server import start_graphql_server
+    from raphtory import graphql
+
+    graphql_port = int(os.getenv("GRAPHQL_PORT", "1736"))
+    work_dir = os.getenv("GRAPHQL_WORK_DIR", "/tmp/raphtory_graphql")
 
     try:
-        # Give FastAPI a moment to start and initialize graph_manager
-        import time
-        time.sleep(2)
+        # Wait for FastAPI to start and initialize graph_manager
+        logger.info("Waiting for FastAPI to initialize...")
+        time.sleep(5)
 
-        if graph_manager is None:
-            logger.warning("Graph manager not initialized yet, starting GraphQL server without graph")
+        # Import after waiting to ensure FastAPI has started
+        from api import server as api_server
 
-        start_graphql_server(graph_manager)
+        # Create working directory
+        os.makedirs(work_dir, exist_ok=True)
+
+        logger.info(
+            "Starting Raphtory GraphQL server with UI",
+            port=graphql_port,
+            work_dir=work_dir
+        )
+
+        # Create and start GraphQL server
+        graphql_server = graphql.GraphServer(work_dir)
+        handle = graphql_server.start(port=graphql_port)
+        client = handle.get_client()
+
+        logger.info(
+            "GraphQL server started successfully",
+            port=graphql_port,
+            ui_url=f"http://localhost:{graphql_port}/",
+            playground_url=f"http://localhost:{graphql_port}/playground"
+        )
+
+        # Periodic graph update loop
+        update_interval = 10  # Update every 10 seconds
+        while True:
+            time.sleep(update_interval)
+
+            # Get the current graph from the FastAPI server's graph_manager
+            if api_server.graph_manager is not None and api_server.graph_manager.graph is not None:
+                try:
+                    # Send updated graph to GraphQL UI
+                    client.send_graph(
+                        path="usdt_transactions",
+                        graph=api_server.graph_manager.graph,
+                        overwrite=True
+                    )
+
+                    stats = api_server.graph_manager.get_statistics()
+                    logger.debug(
+                        "Graph updated in UI",
+                        transactions=stats.get('transaction_count', 0),
+                        nodes=stats.get('node_count', 0),
+                        edges=stats.get('edge_count', 0)
+                    )
+                except Exception as e:
+                    logger.error("Failed to update graph in UI", error=str(e))
+            else:
+                logger.debug("Graph manager not ready yet, skipping update")
+
     except Exception as e:
-        logger.error("GraphQL server error", error=str(e), exc_info=True)
+        logger.error(
+            "GraphQL server error",
+            error=str(e),
+            exc_info=True
+        )
 
 
 def main():
