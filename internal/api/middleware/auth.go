@@ -70,7 +70,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		// Add claims to context for downstream handlers
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyUsername, claims.Username)
-		c.Set(ContextKeyRole, claims.Role)
+		c.Set(ContextKeyRole, string(claims.Role)) // Convert Role to string for context
 		c.Set(ContextKeyClaims, claims)
 
 		m.logger.Debug("User authenticated",
@@ -104,7 +104,7 @@ func (m *AuthMiddleware) Optional() gin.HandlerFunc {
 		// Add claims to context
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyUsername, claims.Username)
-		c.Set(ContextKeyRole, claims.Role)
+		c.Set(ContextKeyRole, string(claims.Role)) // Convert Role to string for context
 		c.Set(ContextKeyClaims, claims)
 
 		c.Next()
