@@ -88,7 +88,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db, jwtManager, logger)
 	outlierHandler := handlers.NewOutlierHandler(db, logger)
-	statisticsHandler := handlers.NewStatisticsHandler(db, logger)
+	statisticsHandler := handlers.NewStatisticsHandler(db, raphtoryClient, logger)
 	healthHandler := handlers.NewHealthHandler(db, raphtoryClient, version, logger)
 	wsHandler := handlers.NewWebSocketHandler(hub, jwtManager, logger)
 
